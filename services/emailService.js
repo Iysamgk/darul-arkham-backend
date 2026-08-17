@@ -1,9 +1,18 @@
+import sgMail from "@sendgrid/mail";
 import { admin } from "../config/firebase.js";
-import transporter from "../config/mail.js";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 class EmailService {
+  constructor() {
+    if (process.env.SENDGRID_API_KEY) {
+      sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+    }
+  }
+
   getRecoveryUrl(path = "/reset-password") {
-    const baseUrl = process.env.CLIENT_URL || "http://localhost:5173";
+    const baseUrl = process.env.CLIENT_URL || "http://localhost:5174";
     const cleanBase = baseUrl.replace(/\/+$|\s+/g, "");
     const cleanPath = path.startsWith("/") ? path : `/${path}`;
     return `${cleanBase}${cleanPath}`;
@@ -31,22 +40,27 @@ class EmailService {
     }
   }
 
+  getSenderEmail() {
+    return process.env.EMAIL_USER || "your-verified-single-sender@gmail.com";
+  }
+
   async sendAdminInvitation(email, name, role) {
     try {
       const actionCodeSettings = this.getActionCodeSettings("/reset-password");
       const rawLink = await admin.auth().generatePasswordResetLink(email, actionCodeSettings);
       const passwordSetupLink = this.formatDirectAppUrl(rawLink, "/reset-password");
 
-      const senderEmail = process.env.EMAIL_USER;
-      const supportEmail = process.env.SUPPORT_EMAIL || senderEmail;
+      const supportEmail = process.env.SUPPORT_EMAIL || this.getSenderEmail();
       const appName = process.env.APP_NAME || "Darul Arkham";
 
-      const mailOptions = {
-        from: `"${appName} Admin" <${senderEmail}>`,
+      const msg = {
         to: email,
+        from: {
+          email: this.getSenderEmail(),
+          name: appName,
+        },
         replyTo: supportEmail,
         subject: `Welcome to ${appName} - Set Your Password`,
-        headers: { "X-Priority": "1", Importance: "High" },
         text: `Hello ${name},\n\nAn administrator account (${role?.toUpperCase() || "ADMIN"}) has been created for you on ${appName}.\n\nPlease set your password using this link:\n${passwordSetupLink}\n\nSupport: ${supportEmail}`,
         html: `
           <div style="font-family: Arial, sans-serif; padding: 24px; color: #222; max-width: 560px; margin: 0 auto; border: 1px solid #e1e4e8; border-radius: 8px;">
@@ -65,10 +79,10 @@ class EmailService {
         `,
       };
 
-      await transporter.sendMail(mailOptions);
-      return { success: true };
+      const response = await sgMail.send(msg);
+      return { success: true, response };
     } catch (error) {
-      console.error("Invitation Email Error:", error);
+      console.error("Invitation Email Error:", error.response ? error.response.body : error);
       throw error;
     }
   }
@@ -79,16 +93,17 @@ class EmailService {
       const rawLink = await admin.auth().generatePasswordResetLink(email, actionCodeSettings);
       const passwordResetLink = this.formatDirectAppUrl(rawLink, "/reset-password");
 
-      const senderEmail = process.env.EMAIL_USER;
-      const supportEmail = process.env.SUPPORT_EMAIL || senderEmail;
+      const supportEmail = process.env.SUPPORT_EMAIL || this.getSenderEmail();
       const appName = process.env.APP_NAME || "Darul Arkham";
 
-      const mailOptions = {
-        from: `"${appName} Support" <${senderEmail}>`,
+      const msg = {
         to: email,
+        from: {
+          email: this.getSenderEmail(),
+          name: appName,
+        },
         replyTo: supportEmail,
         subject: `Reset Your Password - ${appName}`,
-        headers: { "X-Priority": "1", Importance: "High" },
         text: `Hello,\n\nA password reset request was received for your ${appName} administrator account.\n\nReset link:\n${passwordResetLink}\n\nIf you did not request this, please ignore this email.`,
         html: `
           <div style="font-family: Arial, sans-serif; padding: 24px; color: #222; max-width: 560px; margin: 0 auto; border: 1px solid #e1e4e8; border-radius: 8px;">
@@ -105,24 +120,26 @@ class EmailService {
         `,
       };
 
-      await transporter.sendMail(mailOptions);
-      return { success: true };
+      const response = await sgMail.send(msg);
+      return { success: true, response };
     } catch (error) {
-      console.error("Forgot Password Email Error:", error);
+      console.error("Forgot Password Email Error:", error.response ? error.response.body : error);
       throw error;
     }
   }
 
   async sendPasswordChangeNotification(email, name = "Administrator") {
     try {
-      const senderEmail = process.env.EMAIL_USER;
-      const supportEmail = process.env.SUPPORT_EMAIL || senderEmail;
+      const supportEmail = process.env.SUPPORT_EMAIL || this.getSenderEmail();
       const appName = process.env.APP_NAME || "Darul Arkham";
       const recoveryUrl = this.getRecoveryUrl("/forgot-password");
 
-      const mailOptions = {
-        from: `"${appName} Security" <${senderEmail}>`,
+      const msg = {
         to: email,
+        from: {
+          email: this.getSenderEmail(),
+          name: appName,
+        },
         replyTo: supportEmail,
         subject: `Security Alert: Password Changed - ${appName}`,
         text: `Hello ${name},\n\nYour password for ${appName} was successfully changed.\n\nIf you did not make this change, recover your account immediately: ${recoveryUrl}`,
@@ -143,10 +160,10 @@ class EmailService {
         `,
       };
 
-      await transporter.sendMail(mailOptions);
-      return { success: true };
+      const response = await sgMail.send(msg);
+      return { success: true, response };
     } catch (error) {
-      console.error("Password Notification Email Error:", error);
+      console.error("Password Notification Email Error:", error.response ? error.response.body : error);
       throw error;
     }
   }
